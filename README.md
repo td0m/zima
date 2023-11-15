@@ -1,5 +1,7 @@
 # Zima
 
+Examples [hosted here](https://tdom.dev/zima.svg).
+
 PoC.
 
 TODO: think about how we want to do roles properly. options:
