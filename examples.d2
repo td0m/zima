@@ -83,9 +83,9 @@ creator: user created the video {
   }
 
   code: |go
-    z.O("video", "zoo").
+    z.Resource("video", "zoo").
       Relation("creator").
-      To(z.O("user", "jawed_karim"))
+      To(z.User("jawed_karim"))
   |
 }
 
@@ -106,13 +106,13 @@ public: video is public (ABAC) {
   }
 
   code: |go
-    z.O("video", "zoo").
+    z.Resource("video", "zoo").
       Relation("is").
-      To(z.O("label", "public"))
+      To(z.Resource("label", "public"))
 
     // or equivalent
 
-    z.O("video", "zoo").Label("public")
+    z.Resource("video", "zoo").Label("public")
   |
 }
 
@@ -128,14 +128,9 @@ role: RBAC {
   }
 
   code: |go
-    z.O("platform", "").
+    z.ResourceType("platform").
       Relation("moderator").
-      To(z.O("user", "karen"))
-
-    // or
-    z.Type("platform").
-      Relation("moderator").
-      To(z.O("user", "karen"))
+      To(z.User("karen"))
   |
 }
 
@@ -157,16 +152,16 @@ parent_path: can delete comment if created video {
 
   code: |go
     z.Path(
-      z.O("comment", "foo"),
+      z.Resource("comment", "foo"),
       []string{"parent_video", "owner"},
-      z.O("user", "jawed_karim"),
+      z.User("jawed_karim"),
     )
 
     // or equivalent
 
-    vid, err := ze.Attr(ctx, z.O("comment", "foo"), "parent_video")
+    vid, err := ze.Attr(ctx, z.Resource("comment", "foo"), "parent_video")
     isOwner, err := vid.Relation("owner").
-      To(z.O("user", "jawed_karim")).
+      To(z.User("jawed_karim")).
       Eval(ctx, ze)
   |
 }
@@ -195,11 +190,11 @@ blacklisting: {
     z.And(
       // Anyone() is true for all users
       // Authenticated() only for those with non-empty id
-      z.O("video", "zoo").Relation("view").Anyone(),
+      z.Resource("video", "zoo").Relation("view").Anyone(),
       z.Not(
-        z.O("video", "zoo").
+        z.Resource("video", "zoo").
           Relation("hidden_from").
-          To(z.O("user", "jimmy")),
+          To(z.User("jimmy")),
       ),
     )
   | {
@@ -231,10 +226,10 @@ clearance_level: Clearance levels {
       "TOP_SECRET",
     }
 
-    userLevel, err := z.O("user", "obama").
+    userLevel, err := z.User("obama").
       Attr("clearance").Eval(ctx, ze)
 
-    docLevel, err := z.O("doc", "ufo").
+    docLevel, err := z.Resource("doc", "ufo").
       Attr("clearance").Eval(ctx, ze)
 
     level(userLevel) >= level(docLevel)
@@ -264,21 +259,21 @@ groups: groups {
   }
 
   code: |go
-    a := z.O("group", "watchmojo_team")
+    a := z.Resource("group", "watchmojo_team")
       .Relation("member")
-      .To(z.O("user", "jimmy"))
+      .To(z.User("jimmy"))
 
-    b := z.O("video", "zoo")
+    b := z.Resource("video", "zoo")
       .Relation("owner")
-      .To(z.O("group", "watchmojo_team").Relation("member"))
+      .To(z.Resource("group", "watchmojo_team").Relation("member"))
 
     ze.Grant(ctx, a)
     ze.Grant(ctx, b)
 
     // true!
-    z.O("video", "zoo")
+    z.Resource("video", "zoo")
       .Relation("owner")
-      .To(z.O("user", "jimmy"))
+      .To(z.User("jimmy"))
       .Eval(ctx, ze)
   |
 }
