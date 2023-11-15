@@ -9,7 +9,6 @@ import (
 )
 
 var (
-	ErrInvalidType        = errors.New("invalid subject or object type")
 	ErrInvalidSystemGroup = errors.New("invalid system group")
 )
 
@@ -18,9 +17,16 @@ type Server struct {
 	tuples *TupleStore
 }
 
-type CheckResponse struct {
-	Success bool
-	Cache   bool
+type ListChildrenRequest struct {
+	Set Set
+}
+
+type ListParentsRequest struct {
+	Set Set
+}
+
+type Sets struct {
+	Items []Set
 }
 
 func (srv *Server) Check(ctx context.Context, t Tuple) (bool, error) {
@@ -93,6 +99,24 @@ func (s *Server) Write(ctx context.Context, add []Tuple, remove []Tuple) error {
 	}
 
 	return nil
+}
+
+func (s *Server) ListChildren(ctx context.Context, request ListChildrenRequest) (*Sets, error) {
+	children, err := s.tuples.ListChildren(ctx, request.Set)
+	if err != nil {
+		return nil, fmt.Errorf("db failed: %w", err)
+	}
+
+	return &Sets{Items: children}, nil
+}
+
+func (s *Server) ListParents(ctx context.Context, request ListParentsRequest) (*Sets, error) {
+	parents, err := s.tuples.ListParents(ctx, request.Set)
+	if err != nil {
+		return nil, fmt.Errorf("db failed: %w", err)
+	}
+
+	return &Sets{Items: parents}, nil
 }
 
 func NewServer(conn *pgxpool.Pool) *Server {

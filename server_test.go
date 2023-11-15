@@ -9,37 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func try[T any](t T, err error) T {
-	if err != nil {
-		panic(err)
-	}
-
-	return t
-}
-
-func set(t, i, r string) Set {
-	return try(NewSet(t, i, r))
-}
-
-func cleanup(ctx context.Context, conn *pgxpool.Pool) {
-	query := `
-		delete from tuples;
-	`
-	if _, err := conn.Exec(ctx, query); err != nil {
-		panic(err)
-	}
-}
-
-func conn() *pgxpool.Pool {
-	ctx := context.Background()
-	conn, err := pgxpool.New(ctx, "")
-	if err != nil {
-		panic(err)
-	}
-	cleanup(ctx, conn)
-	return conn
-}
-
 func TestDirect(t *testing.T) {
 	ctx := context.Background()
 
@@ -63,43 +32,6 @@ func TestDirect(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, res)
 	})
-
-	t.Run("Caches", func(t *testing.T) {
-		s := NewServer(conn())
-
-		err := s.Write(ctx, []Tuple{a}, nil)
-		require.NoError(t, err)
-
-		t.Run("NoCacheFirst", func(t *testing.T) {
-			res, err := s.Check(ctx, a)
-			require.NoError(t, err)
-			assert.True(t, res)
-		})
-
-		t.Run("FailureAfterRevoke", func(t *testing.T) {
-			err := s.Write(ctx, nil, []Tuple{a})
-			require.NoError(t, err)
-
-			res, err := s.Check(ctx, a)
-			require.NoError(t, err)
-			assert.False(t, res)
-		})
-	})
-}
-
-func TestLabelling(t *testing.T) {
-	ctx := context.Background()
-
-	public := Tuple{set("post", "a", "is"), set("", "public", "")}
-
-	s := NewServer(conn())
-
-	err := s.Write(ctx, []Tuple{public}, nil)
-	require.NoError(t, err)
-
-	res, err := s.Check(ctx, public)
-	require.NoError(t, err)
-	assert.True(t, res)
 }
 
 func TestGroup(t *testing.T) {
@@ -148,6 +80,77 @@ func TestGroup(t *testing.T) {
 		res, err := s.Check(ctx, c)
 		require.NoError(t, err)
 		assert.True(t, res)
+	})
+}
+
+func TestLabelling(t *testing.T) {
+	ctx := context.Background()
+
+	public := Tuple{set("post", "a", "is"), set("", "public", "")}
+
+	s := NewServer(conn())
+
+	err := s.Write(ctx, []Tuple{public}, nil)
+	require.NoError(t, err)
+
+	res, err := s.Check(ctx, public)
+	require.NoError(t, err)
+	assert.True(t, res)
+}
+
+func TestListChildren(t *testing.T) {
+	ctx := context.Background()
+
+	admins := set("team", "admins", "member")
+	a := Tuple{admins, set("user", "alice", "")}
+	b := Tuple{admins, set("user", "bob", "")}
+	c := Tuple{set("team", "nonadmins", "member"), set("user", "alice", "")}
+
+	s := NewServer(conn())
+	err := s.Write(ctx, []Tuple{a, b, c}, nil)
+	require.NoError(t, err)
+
+	t.Run("Empty", func(t *testing.T) {
+		res, err := s.ListChildren(ctx, ListChildrenRequest{set("some", "random", "set")})
+		require.NoError(t, err)
+		assert.Equal(t, 0, len(res.Items))
+	})
+
+	t.Run("Admins", func(t *testing.T) {
+		res, err := s.ListChildren(ctx, ListChildrenRequest{admins})
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(res.Items))
+		assert.Equal(t, a.Child, res.Items[0])
+		assert.Equal(t, b.Child, res.Items[1])
+	})
+}
+
+func TestListParents(t *testing.T) {
+	ctx := context.Background()
+
+	alice := set("user", "alice", "")
+	admins := set("team", "admins", "member")
+
+	a := Tuple{admins, alice}
+	b := Tuple{admins, set("user", "bob", "")}
+	c := Tuple{set("team", "nonadmins", "member"), alice}
+
+	s := NewServer(conn())
+	err := s.Write(ctx, []Tuple{a, b, c}, nil)
+	require.NoError(t, err)
+
+	t.Run("Empty", func(t *testing.T) {
+		res, err := s.ListParents(ctx, ListParentsRequest{set("some", "random", "set")})
+		require.NoError(t, err)
+		assert.Equal(t, 0, len(res.Items))
+	})
+
+	t.Run("Alice", func(t *testing.T) {
+		res, err := s.ListParents(ctx, ListParentsRequest{alice})
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(res.Items))
+		assert.Equal(t, a.Parent, res.Items[0])
+		assert.Equal(t, c.Parent, res.Items[1])
 	})
 }
 
@@ -275,4 +278,35 @@ func TestSystemUsers(t *testing.T) {
 			assert.False(t, res)
 		})
 	})
+}
+
+func cleanup(ctx context.Context, conn *pgxpool.Pool) {
+	query := `
+		delete from tuples;
+	`
+	if _, err := conn.Exec(ctx, query); err != nil {
+		panic(err)
+	}
+}
+
+func conn() *pgxpool.Pool {
+	ctx := context.Background()
+	conn, err := pgxpool.New(ctx, "")
+	if err != nil {
+		panic(err)
+	}
+	cleanup(ctx, conn)
+	return conn
+}
+
+func set(t, i, r string) Set {
+	return try(NewSet(t, i, r))
+}
+
+func try[T any](t T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+
+	return t
 }
