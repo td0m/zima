@@ -14,7 +14,6 @@ var (
 )
 
 type Server struct {
-	config Config
 	conn   *pgxpool.Pool
 	tuples *TupleStore
 }
@@ -37,18 +36,6 @@ func (srv *Server) Check(ctx context.Context, t Tuple) (bool, error) {
 		}
 	}
 
-	// Validate types in config
-	if t.Child.Type != "" {
-		_, ok := srv.config.Types[t.Child.Type]
-		if !ok {
-			return false, ErrInvalidType
-		}
-	}
-	parentType, ok := srv.config.Types[t.Parent.Type]
-	if !ok {
-		return false, ErrInvalidType
-	}
-
 	// Direct connection check
 	success, err := srv.tuples.Exists(ctx, t)
 	if err != nil {
@@ -56,20 +43,6 @@ func (srv *Server) Check(ctx context.Context, t Tuple) (bool, error) {
 	}
 	if success {
 		return true, nil
-	}
-
-	// Permission = any relation matches
-	if relations, ok := parentType.Permissions[t.Parent.Relation]; ok {
-		// TODO: parallel
-		for _, r := range relations {
-			res, err := srv.Check(ctx, Tuple{Parent: Set{Type: t.Parent.Type, ID: t.Parent.ID, Relation: r}, Child: t.Child})
-			if err != nil {
-				return false, fmt.Errorf("failed to check: %w", err)
-			}
-			if res {
-				return true, nil
-			}
-		}
 	}
 
 	// Groups
@@ -97,8 +70,6 @@ func (s *Server) Write(ctx context.Context, add []Tuple, remove []Tuple) error {
 		return fmt.Errorf("failed to begin tx: %w", err)
 	}
 
-	// TODO: validate with config on add
-
 	for _, t := range add {
 		if err := s.tuples.WithTx(tx).Add(ctx, t); err != nil {
 			if err := tx.Rollback(ctx); err != nil {
@@ -124,6 +95,6 @@ func (s *Server) Write(ctx context.Context, add []Tuple, remove []Tuple) error {
 	return nil
 }
 
-func NewServer(config Config, conn *pgxpool.Pool) *Server {
-	return &Server{config, conn, NewTupleStore(conn)}
+func NewServer(conn *pgxpool.Pool) *Server {
+	return &Server{conn, NewTupleStore(conn)}
 }
