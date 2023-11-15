@@ -1,0 +1,284 @@
+classes: {
+  check: {
+    grid-rows: 2
+    direction: right
+
+    style.fill: transparent
+    style.double-border: false
+    style.stroke: "#555"
+    style.border-radius: 10
+    style.fill-pattern: dots
+  }
+
+  diagram: "" {
+    direction: right
+    style.fill: "#fff"
+    style.stroke: "transparent"
+  }
+
+  user: {
+    shape: oval
+  }
+  special-user: {
+    style.fill: "#FFF8E5"
+    style.stroke: "#A56300"
+  }
+
+  label: {
+    style.stroke-dash: 5
+    style.fill: transparent
+  }
+
+  code: {
+    style.shadow: true
+  }
+
+  connection: {
+    style.animated: true
+  }
+
+  red-connection: {
+    style.animated: true
+    style.font-color: "#A61100"
+    style.stroke: "#A61100"
+  }
+
+  label: {
+    style.stroke-dash: 5
+    style.fill: "#eff7f3"
+    style.stroke: "#176037"
+    style.font-color: "#176037"
+    shape: oval
+  }
+
+  attr: {
+    style.stroke: transparent
+  }
+
+  relation: {
+    shape: step
+    style.stroke: "#000"
+    style.font-color: "#000"
+    style.fill: transparent
+  }
+
+  inheritance: {
+    style.animated: true
+    style.stroke: "#cccccc"
+  }
+}
+
+grid-columns: 3
+
+creator: user created the video {
+  class: check
+  diagram: "" {
+    class: diagram
+    style.fill: white
+    "video:zoo".class: object
+    "user:jawed_karim".class: user
+    "video:zoo" -> "user:jawed_karim": creator {
+      class: connection
+    }
+  }
+
+  code: |go
+    z.O("video", "zoo").
+      Relation("creator").
+      To(z.O("user", "jawed_karim"))
+  |
+}
+
+public: video is public (ABAC) {
+  class: check
+
+  diagram: "" {
+    class: diagram
+    o: video:zoo {
+      class: object
+    }
+    s: label:public {
+      class: label
+    }
+    o -> s: is {
+      class: connection
+    }
+  }
+
+  code: |go
+    z.O("video", "zoo").
+      Relation("is").
+      To(z.O("label", "public"))
+
+    // or equivalent
+
+    z.O("video", "zoo").Label("public")
+  |
+}
+
+role: RBAC {
+  class: check
+  diagram: "" {
+    class: diagram
+    "platform".class: object
+    "user:karen".class: user
+    "platform" -> "user:karen": moderator {
+      class: connection
+    }
+  }
+
+  code: |go
+    z.O("platform", "").
+      Relation("moderator").
+      To(z.O("user", "karen"))
+
+    // or
+    z.Type("platform").
+      Relation("moderator").
+      To(z.O("user", "karen"))
+  |
+}
+
+parent_path: can delete comment if created video {
+  class: check
+  diagram: "" {
+    class: diagram
+    direction: down
+    "video:zoo".class: object
+    "user:jawed_karim".class: user
+    "comment:foo".class: object
+    "comment:foo" -> "video:zoo": parent_video {
+      class: connection
+    }
+    "video:zoo" -> "user:jawed_karim": creator {
+      class: connection
+    }
+  }
+
+  code: |go
+    z.Path(
+      z.O("comment", "foo"),
+      []string{"parent_video", "owner"},
+      z.O("user", "jawed_karim"),
+    )
+
+    // or equivalent
+
+    vid, err := ze.Attr(ctx, z.O("comment", "foo"), "parent_video")
+    isOwner, err := vid.Relation("owner").
+      To(z.O("user", "jawed_karim")).
+      Eval(ctx, ze)
+  |
+}
+
+blacklisting: {
+  class: check
+
+  diagram: "" {
+    class: diagram
+    o: video:zoo
+    anyone: anyone {
+      class: special-user
+    }
+    s: user:jimmy {
+      class: user
+    }
+    o -> s: hidden_from {
+      class: red-connection
+    }
+    o -> anyone: view {
+      class: connection
+    }
+  }
+
+  code: |go
+    z.And(
+      // Anyone() is true for all users
+      // Authenticated() only for those with non-empty id
+      z.O("video", "zoo").Relation("view").Anyone(),
+      z.Not(
+        z.O("video", "zoo").
+          Relation("hidden_from").
+          To(z.O("user", "jimmy")),
+      ),
+    )
+  | {
+    class: code
+  }
+}
+
+clearance_level: Clearance levels {
+  class: check
+  diagram: "" {
+    class: diagram
+    "doc:ufo".class: object
+    "user:obama".class: user
+    "TOP_SECRET".class: attr
+    "SECRET".class: attr
+    "doc:ufo" -> "TOP_SECRET": clearance {
+      class: connection
+    }
+    "user:obama" -> "SECRET": clearance {
+      class: connection
+    }
+  }
+
+  code: |go
+    levels := []string{
+      "NON_CONFIDENTIAL",
+      "CONFIDENTIAL",
+      "SECRET",
+      "TOP_SECRET",
+    }
+
+    userLevel, err := z.O("user", "obama").
+      Attr("clearance").Eval(ctx, ze)
+
+    docLevel, err := z.O("doc", "ufo").
+      Attr("clearance").Eval(ctx, ze)
+
+    level(userLevel) >= level(docLevel)
+  |
+}
+
+groups: groups {
+  class: check
+  diagram: "" {
+    class: diagram
+    direction: up
+
+    "group:watchmojo_team".class: group
+    "group:watchmojo_team [member]".class: relation
+    "user:jimmy".class: user
+
+    "video:zoo" -> "group:watchmojo_team [member]": owner {
+      class: connection
+    }
+
+    "group:watchmojo_team [member]" -> "user:jimmy": "" {
+      class: inheritance
+    }
+    "group:watchmojo_team" -> "user:jimmy": member {
+      class: connection
+    }
+  }
+
+  code: |go
+    a := z.O("group", "watchmojo_team")
+      .Relation("member")
+      .To(z.O("user", "jimmy"))
+
+    b := z.O("video", "zoo")
+      .Relation("owner")
+      .To(z.O("group", "watchmojo_team").Relation("member"))
+
+    ze.Grant(ctx, a)
+    ze.Grant(ctx, b)
+
+    // true!
+    z.O("video", "zoo")
+      .Relation("owner")
+      .To(z.O("user", "jimmy"))
+      .Eval(ctx, ze)
+  |
+}
