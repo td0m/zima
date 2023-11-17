@@ -1,0 +1,23 @@
+
+{{define "page"}}
+hello
+
+<select id="direction">
+		<option disabled selected>default</option>
+		<option value="parents">Parents</option>
+		<option value="children">Children</option>
+</select>
+
+<div style="width: 400px">
+{{.svg}}
+</div>
+
+<script>
+document.getElementById("direction").addEventListener("change", (e) => {
+	const value = e.target.value
+	var params = new URLSearchParams(location.search);
+	params.set("direction", value);
+	window.location.search = params.toString();
+})
+</script>
+{{end}}
