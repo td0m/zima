@@ -111,17 +111,17 @@ func TestListChildren(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("Empty", func(t *testing.T) {
-		res, err := s.ListChildren(ctx, ListChildrenRequest{set("some", "random", "set")})
+		res, err := s.ListChildren(ctx, ListChildrenRequest{Type: "some", ID: "random"})
 		require.NoError(t, err)
 		assert.Equal(t, 0, len(res.Items))
 	})
 
 	t.Run("Admins", func(t *testing.T) {
-		res, err := s.ListChildren(ctx, ListChildrenRequest{admins})
+		res, err := s.ListChildren(ctx, ListChildrenRequest{Type: admins.Type, ID: admins.ID})
 		require.NoError(t, err)
 		assert.Equal(t, 2, len(res.Items))
-		assert.Equal(t, a.Child, res.Items[0])
-		assert.Equal(t, b.Child, res.Items[1])
+		assert.Equal(t, Connection{Relation: "member", Set: a.Child}, res.Items[0])
+		assert.Equal(t, Connection{Relation: "member", Set: b.Child}, res.Items[1])
 	})
 }
 
@@ -140,13 +140,13 @@ func TestListParents(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("Empty", func(t *testing.T) {
-		res, err := s.ListParents(ctx, ListParentsRequest{set("some", "random", "set")})
+		res, err := s.ListParents(ctx, ListParentsRequest{Type: "some", ID: "random"})
 		require.NoError(t, err)
 		assert.Equal(t, 0, len(res.Items))
 	})
 
 	t.Run("Alice", func(t *testing.T) {
-		res, err := s.ListParents(ctx, ListParentsRequest{alice})
+		res, err := s.ListParents(ctx, ListParentsRequest{Type: alice.Type, ID: alice.ID})
 		require.NoError(t, err)
 		assert.Equal(t, 2, len(res.Items))
 		assert.Equal(t, a.Parent, res.Items[0])

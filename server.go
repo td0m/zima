@@ -18,15 +18,22 @@ type Server struct {
 }
 
 type ListChildrenRequest struct {
-	Set Set
+	Type string
+	ID   string
 }
 
 type ListParentsRequest struct {
-	Set Set
+	Type     string
+	ID       string
+	Relation string
 }
 
 type Sets struct {
 	Items []Set
+}
+
+type Connections struct {
+	Items []Connection
 }
 
 func (srv *Server) Check(ctx context.Context, t Tuple) (bool, error) {
@@ -77,6 +84,9 @@ func (s *Server) Write(ctx context.Context, add []Tuple, remove []Tuple) error {
 	}
 
 	for _, t := range add {
+		if t.Parent.Relation == "" {
+			return fmt.Errorf("no relation")
+		}
 		if err := s.tuples.WithTx(tx).Add(ctx, t); err != nil {
 			if err := tx.Rollback(ctx); err != nil {
 				return fmt.Errorf("failed to rollback '%s': %w", t, err)
@@ -101,17 +111,17 @@ func (s *Server) Write(ctx context.Context, add []Tuple, remove []Tuple) error {
 	return nil
 }
 
-func (s *Server) ListChildren(ctx context.Context, request ListChildrenRequest) (*Sets, error) {
-	children, err := s.tuples.ListChildren(ctx, request.Set)
+func (s *Server) ListChildren(ctx context.Context, request ListChildrenRequest) (*Connections, error) {
+	children, err := s.tuples.ListConnectingFrom(ctx, request.Type, request.ID)
 	if err != nil {
 		return nil, fmt.Errorf("db failed: %w", err)
 	}
 
-	return &Sets{Items: children}, nil
+	return &Connections{Items: children}, nil
 }
 
 func (s *Server) ListParents(ctx context.Context, request ListParentsRequest) (*Sets, error) {
-	parents, err := s.tuples.ListParents(ctx, request.Set)
+	parents, err := s.tuples.ListConnectingTo(ctx, request.Type, request.ID, request.Relation)
 	if err != nil {
 		return nil, fmt.Errorf("db failed: %w", err)
 	}
