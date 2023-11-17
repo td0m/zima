@@ -26,7 +26,7 @@ func (t *TupleStore) WithTx(tx pgx.Tx) *TupleStore {
 func (t *TupleStore) ListSubsets(ctx context.Context, s Set) ([]Set, error) {
 	subs, err := t.ListChildren(ctx, s)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list childs: %w", err)
+		return nil, fmt.Errorf("failed to list children: %w", err)
 	}
 
 	out := []Set{}
@@ -52,19 +52,44 @@ func (t *TupleStore) ListChildren(ctx context.Context, s Set) ([]Set, error) {
 		return nil, fmt.Errorf("failed to query: %w", err)
 	}
 
-	childs := []Set{}
+	children := []Set{}
 	for rows.Next() {
 		sub := Set{}
 		if err := rows.Scan(&sub.Type, &sub.ID, &sub.Relation); err != nil {
 			return nil, fmt.Errorf("failed to scan: %w", err)
 		}
-		childs = append(childs, sub)
+		children = append(children, sub)
 	}
 
-	return childs, nil
+	return children, nil
 }
 
-func (t *TupleStore) ListParents(ctx context.Context, child Set) ([]Set, error) {
+func (t *TupleStore) ListConnectingFrom(ctx context.Context, typ, id string) ([]Connection, error) {
+	query := `
+		select parent_relation, child_type, child_id, child_relation
+		from tuples
+		where
+			(parent_type, parent_id) = ($1, $2)
+	`
+
+	rows, err := t.conn.Query(ctx, query, typ, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query: %w", err)
+	}
+
+	children := []Connection{}
+	for rows.Next() {
+		r := Connection{}
+		if err := rows.Scan(&r.Relation, &r.Set.Type, &r.Set.ID, &r.Set.Relation); err != nil {
+			return nil, fmt.Errorf("failed to scan: %w", err)
+		}
+		children = append(children, r)
+	}
+
+	return children, nil
+}
+
+func (t *TupleStore) ListConnectingTo(ctx context.Context, typ, id, relation string) ([]Set, error) {
 	query := `
 		select parent_type, parent_id, parent_relation
 		from tuples
@@ -72,21 +97,21 @@ func (t *TupleStore) ListParents(ctx context.Context, child Set) ([]Set, error) 
 			(child_type, child_id, child_relation) = ($1, $2, $3)
 	`
 
-	rows, err := t.conn.Query(ctx, query, child.Type, child.ID, child.Relation)
+	rows, err := t.conn.Query(ctx, query, typ, id, relation)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query: %w", err)
 	}
 
-	childs := []Set{}
+	children := []Set{}
 	for rows.Next() {
 		child := Set{}
 		if err := rows.Scan(&child.Type, &child.ID, &child.Relation); err != nil {
 			return nil, fmt.Errorf("failed to scan: %w", err)
 		}
-		childs = append(childs, child)
+		children = append(children, child)
 	}
 
-	return childs, nil
+	return children, nil
 }
 
 func (t *TupleStore) Add(ctx context.Context, tuple Tuple) error {
