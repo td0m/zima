@@ -89,7 +89,7 @@ func (t *TupleStore) ListConnectingFrom(ctx context.Context, typ, id string) ([]
 	return children, nil
 }
 
-func (t *TupleStore) ListConnectingTo(ctx context.Context, typ, id, relation string) ([]Set, error) {
+func (t *TupleStore) ListConnectingTo(ctx context.Context, s Set) ([]Set, error) {
 	query := `
 		select parent_type, parent_id, parent_relation
 		from tuples
@@ -97,7 +97,7 @@ func (t *TupleStore) ListConnectingTo(ctx context.Context, typ, id, relation str
 			(child_type, child_id, child_relation) = ($1, $2, $3)
 	`
 
-	rows, err := t.conn.Query(ctx, query, typ, id, relation)
+	rows, err := t.conn.Query(ctx, query, s.Type, s.ID, s.Relation)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query: %w", err)
 	}
@@ -199,6 +199,7 @@ func (t *TupleStore) ListChildrenRec(ctx context.Context, parent Set) ([]Set, er
 
 	return children, nil
 }
+
 
 func (t *TupleStore) ListParentsRec(ctx context.Context, child Set) ([]Set, error) {
 	query := `

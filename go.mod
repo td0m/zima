@@ -4,6 +4,7 @@ go 1.21.3
 
 require (
 	github.com/jackc/pgx/v5 v5.5.0
+	github.com/rs/xid v1.5.0
 	github.com/stretchr/testify v1.8.1
 )
 

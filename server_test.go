@@ -32,6 +32,31 @@ func TestDirect(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, res)
 	})
+
+	t.Run("False on simultaneous add and remove", func(t *testing.T) {
+		s := NewServer(conn())
+
+		err := s.Write(ctx, []Tuple{a}, []Tuple{a})
+		require.NoError(t, err)
+
+		res, err := s.Check(ctx, a)
+		require.NoError(t, err)
+		assert.False(t, res)
+	})
+
+	t.Run("FalseAfterRemoval", func(t *testing.T) {
+		s := NewServer(conn())
+
+		err := s.Write(ctx, []Tuple{a}, nil)
+		require.NoError(t, err)
+
+		err = s.Write(ctx, nil, []Tuple{a})
+		require.NoError(t, err)
+
+		res, err := s.Check(ctx, a)
+		require.NoError(t, err)
+		assert.False(t, res)
+	})
 }
 
 func TestGroup(t *testing.T) {
@@ -156,6 +181,7 @@ func TestListParents(t *testing.T) {
 
 // TODO: Validation? No cycles?
 
+// TODO: DOUBLE NEST, caching won't work.
 func TestNestedGroup(t *testing.T) {
 	ctx := context.Background()
 
@@ -203,7 +229,42 @@ func TestNestedGroup(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, res)
 	})
+
+	t.Run("FalseAfterRemoval", func(t *testing.T) {
+		s := NewServer(conn())
+
+		err := s.Write(ctx, []Tuple{a, b}, nil)
+		require.NoError(t, err)
+
+		err = s.Write(ctx, nil, []Tuple{a, b})
+		require.NoError(t, err)
+
+		res, err := s.Check(ctx, a)
+		require.NoError(t, err)
+		assert.False(t, res)
+	})
 }
+
+// func TestNestedGroupTwice(t *testing.T) {
+// 	ctx := context.Background()
+//
+// 	a := Tuple{set("group", "superadmins", "member"), set("user", "alice", "")}
+// 	b := Tuple{set("post", "a", "owner"), set("group", "admins", "member")}
+// 	c := Tuple{set("group", "admins", "member"), set("group", "superadmins", "member")}
+//
+// 	expected := Tuple{set("post", "a", "owner"), set("user", "alice", "")}
+//
+// 	t.Run("Success", func(t *testing.T) {
+// 		s := NewServer(conn())
+//
+// 		err := s.Write(ctx, []Tuple{a,b,c}, nil)
+// 		require.NoError(t, err)
+//
+// 		res, err := s.Check(ctx, expected)
+// 		require.NoError(t, err)
+// 		assert.True(t, res)
+// 	})
+// }
 
 func TestSystemUsers(t *testing.T) {
 	ctx := context.Background()
@@ -283,6 +344,8 @@ func TestSystemUsers(t *testing.T) {
 func cleanup(ctx context.Context, conn *pgxpool.Pool) {
 	query := `
 		delete from tuples;
+		delete from caches;
+		delete from changes;
 	`
 	if _, err := conn.Exec(ctx, query); err != nil {
 		panic(err)
