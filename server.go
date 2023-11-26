@@ -59,6 +59,8 @@ func (srv *Server) Check(ctx context.Context, t Tuple) (bool, error) {
 		return false, fmt.Errorf("getting child cache failed: %w", err)
 	}
 
+	fmt.Println("check", t)
+
 	childrenWithSelf := append(children, t.Parent)
 	if intersects(childrenWithSelf, parents) {
 		return true, nil
@@ -73,7 +75,6 @@ func intersects(as, bs []Set) bool {
 	for _, a := range as {
 		for _, b := range bs {
 			if a.Equals(b) {
-				fmt.Println("yes!")
 				return true
 			}
 		}
@@ -88,8 +89,6 @@ func (s *Server) Write(ctx context.Context, add []Tuple, remove []Tuple) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin tx: %w", err)
 	}
-
-	fmt.Println("new", add, remove)
 
 	var toUpdateParents []Set
 	var toUpdateChildren []Set
@@ -107,13 +106,11 @@ func (s *Server) Write(ctx context.Context, add []Tuple, remove []Tuple) error {
 
 			toUpdateChildren = append(toUpdateChildren, parents...)
 
-			// if !t.Child.IsSingleton() {
-			// 	children, err := s.tuples.ListChildren(ctx, t.Child)
-			// 	if err != nil {
-			// 		return fmt.Errorf("failed to list children: %w", err)
-			// 	}
-			// 	toUpdateParents = append(toUpdateParents, children...)
-			// }
+			children, err := s.tuples.ListChildrenRec(ctx, t.Child)
+			if err != nil {
+				return fmt.Errorf("failed to list children: %w", err)
+			}
+			toUpdateParents = append(toUpdateParents, children...)
 		}
 	}
 
@@ -142,13 +139,11 @@ func (s *Server) Write(ctx context.Context, add []Tuple, remove []Tuple) error {
 
 			toUpdateChildren = append(toUpdateChildren, parents...)
 
-			// if !t.Child.IsSingleton() {
-			// 	children, err := s.tuples.ListChildren(ctx, t.Child)
-			// 	if err != nil {
-			// 		return fmt.Errorf("failed to list children: %w", err)
-			// 	}
-			// 	toUpdateParents = append(toUpdateParents, children...)
-			// }
+			children, err := s.tuples.ListChildrenRec(ctx, t.Child)
+			if err != nil {
+				return fmt.Errorf("failed to list children: %w", err)
+			}
+			toUpdateParents = append(toUpdateParents, children...)
 		}
 	}
 
@@ -168,8 +163,6 @@ func (s *Server) Write(ctx context.Context, add []Tuple, remove []Tuple) error {
 			return fmt.Errorf("ListChildrenRec failed: %w", err)
 		}
 
-		fmt.Println("updateChildren", set, children)
-
 		if err := set.CacheChildren(ctx, tx, children); err != nil {
 			_ = tx.Rollback(ctx)
 			return err
@@ -181,8 +174,6 @@ func (s *Server) Write(ctx context.Context, add []Tuple, remove []Tuple) error {
 		if err != nil {
 			return fmt.Errorf("ListConnectingTo failed: %w", err)
 		}
-		fmt.Println("updateParents", set, parents)
-
 		if err := set.CacheParents(ctx, tx, parents); err != nil {
 			_ = tx.Rollback(ctx)
 			return fmt.Errorf("cacheParents failed: %w", err)

@@ -181,7 +181,6 @@ func TestListParents(t *testing.T) {
 
 // TODO: Validation? No cycles?
 
-// TODO: DOUBLE NEST, caching won't work.
 func TestNestedGroup(t *testing.T) {
 	ctx := context.Background()
 
@@ -245,26 +244,80 @@ func TestNestedGroup(t *testing.T) {
 	})
 }
 
-// func TestNestedGroupTwice(t *testing.T) {
-// 	ctx := context.Background()
-//
-// 	a := Tuple{set("group", "superadmins", "member"), set("user", "alice", "")}
-// 	b := Tuple{set("post", "a", "owner"), set("group", "admins", "member")}
-// 	c := Tuple{set("group", "admins", "member"), set("group", "superadmins", "member")}
-//
-// 	expected := Tuple{set("post", "a", "owner"), set("user", "alice", "")}
-//
-// 	t.Run("Success", func(t *testing.T) {
-// 		s := NewServer(conn())
-//
-// 		err := s.Write(ctx, []Tuple{a,b,c}, nil)
-// 		require.NoError(t, err)
-//
-// 		res, err := s.Check(ctx, expected)
-// 		require.NoError(t, err)
-// 		assert.True(t, res)
-// 	})
-// }
+func TestDeeplyNestedGroup(t *testing.T) {
+	ctx := context.Background()
+
+	a := Tuple{set("group", "superadmins", "member"), set("group", "duperadmins", "member")}
+	b := Tuple{set("post", "a", "owner"), set("group", "admins", "member")}
+	c := Tuple{set("group", "admins", "member"), set("group", "superadmins", "member")}
+	d := Tuple{set("group", "duperadmins", "member"), set("user", "alice", "")}
+
+	expected := Tuple{set("post", "a", "owner"), set("user", "alice", "")}
+
+	t.Run("True", func(t *testing.T) {
+		s := NewServer(conn())
+
+		err := s.Write(ctx, []Tuple{a,b,c,d}, nil)
+		require.NoError(t, err)
+
+		res, err := s.Check(ctx, expected)
+		require.NoError(t, err)
+		assert.True(t, res)
+	})
+
+	t.Run("FalseOnOnlyABC", func(t *testing.T) {
+		s := NewServer(conn())
+
+		err := s.Write(ctx, []Tuple{a,b,c}, nil)
+		require.NoError(t, err)
+
+		res, err := s.Check(ctx, expected)
+		require.NoError(t, err)
+		assert.False(t, res)
+	})
+
+	t.Run("FalseAfterRemovingC", func(t *testing.T) {
+		s := NewServer(conn())
+
+		err := s.Write(ctx, []Tuple{a,b,c,d}, nil)
+		require.NoError(t, err)
+
+		err = s.Write(ctx, nil, []Tuple{c})
+		require.NoError(t, err)
+
+		res, err := s.Check(ctx, expected)
+		require.NoError(t, err)
+		assert.False(t, res)
+	})
+
+	t.Run("FalseAfterRemovingD", func(t *testing.T) {
+		s := NewServer(conn())
+
+		err := s.Write(ctx, []Tuple{a,b,c,d}, nil)
+		require.NoError(t, err)
+
+		err = s.Write(ctx, nil, []Tuple{d})
+		require.NoError(t, err)
+
+		res, err := s.Check(ctx, expected)
+		require.NoError(t, err)
+		assert.False(t, res)
+	})
+
+	t.Run("FalseAfterRemovingB", func(t *testing.T) {
+		s := NewServer(conn())
+
+		err := s.Write(ctx, []Tuple{a,b,c,d}, nil)
+		require.NoError(t, err)
+
+		err = s.Write(ctx, nil, []Tuple{b})
+		require.NoError(t, err)
+
+		res, err := s.Check(ctx, expected)
+		require.NoError(t, err)
+		assert.False(t, res)
+	})
+}
 
 func TestSystemUsers(t *testing.T) {
 	ctx := context.Background()
