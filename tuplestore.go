@@ -224,7 +224,7 @@ func (t *TupleStore) ListParentsRec(ctx context.Context, child Set) ([]Set, erro
 		return nil, fmt.Errorf("exec failed: %w", err)
 	}
 
-	var parents []Set
+	parents := []Set{}
 	for rows.Next() {
 		var parent Set
 		if err := rows.Scan(&parent.Type, &parent.ID, &parent.Relation); err != nil {

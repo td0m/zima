@@ -162,7 +162,7 @@ func (s *Server) Write(ctx context.Context, add []Tuple, remove []Tuple) error {
 	}
 
 	for _, set := range toUpdateChildren {
-		children, err := s.tuples.WithTx(tx).ListSubsets(ctx, set)
+		children, err := s.tuples.WithTx(tx).ListConnectingTo(ctx, set)
 		if err != nil {
 			_ = tx.Rollback(ctx)
 			return fmt.Errorf("ListChildrenRec failed: %w", err)
@@ -177,7 +177,7 @@ func (s *Server) Write(ctx context.Context, add []Tuple, remove []Tuple) error {
 	}
 
 	for _, set := range toUpdateParents {
-		parents, err := s.tuples.WithTx(tx).ListConnectingTo(ctx, set)
+		parents, err := s.tuples.WithTx(tx).ListParentsRec(ctx, set)
 		if err != nil {
 			return fmt.Errorf("ListConnectingTo failed: %w", err)
 		}
@@ -185,7 +185,7 @@ func (s *Server) Write(ctx context.Context, add []Tuple, remove []Tuple) error {
 
 		if err := set.CacheParents(ctx, tx, parents); err != nil {
 			_ = tx.Rollback(ctx)
-			return err
+			return fmt.Errorf("cacheParents failed: %w", err)
 		}
 	}
 
