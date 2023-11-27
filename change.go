@@ -10,14 +10,8 @@ import (
 type Change struct {
 	ID        string
 	Type      string
-	Payload   TupleChange
+	Payload   Tuple
 	CreatedAt time.Time
-}
-
-type TupleChange struct {
-	Tuple          Tuple
-	UpdateChildren []Set
-	UpdateParents  []Set
 }
 
 func (c Change) Create(ctx context.Context) error {

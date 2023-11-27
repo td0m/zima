@@ -20,15 +20,13 @@ create table tuples(
   primary key(parent_type, parent_id, parent_relation, child_type, child_id, child_relation)
 );
 
--- cache!
--- drop table caches;
 create table caches(
   set_type text not null,
   set_id text not null,
   set_relation text not null,
 
   parents jsonb not null,
-  children_rec jsonb not null,
+  children jsonb not null,
 
   primary key (set_type, set_id, set_relation)
 );

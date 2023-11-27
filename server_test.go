@@ -2,25 +2,29 @@ package zima
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// func writeAndFlush(s *Server, ctx context.Context, add, remove []Tuple) error {
-// 	// err := s.Write(ctx, add, remove)
-// 	if err := s.processAll(ctx); err != nil {
-// 		panic(err)
-// 	}
-// 	// return err
-// 	return nil
-// }
+func processAll(s *Server, ctx context.Context) error {
+	for {
+		if err := s.processOne(ctx); err != nil {
+			if err == pgx.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("processing change failed: %w", err)
+		}
+	}
+}
 
 func add(s *Server, ctx context.Context, t Tuple) error {
 	err := s.Add(ctx, t)
-	if err := s.processAll(ctx); err != nil {
+	if err := processAll(s, ctx); err != nil {
 		panic(err)
 	}
 	return err
@@ -28,7 +32,7 @@ func add(s *Server, ctx context.Context, t Tuple) error {
 
 func remove(s *Server, ctx context.Context, t Tuple) error {
 	err := s.Remove(ctx, t)
-	if err := s.processAll(ctx); err != nil {
+	if err := processAll(s, ctx); err != nil {
 		panic(err)
 	}
 	return err

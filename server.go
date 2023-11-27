@@ -81,23 +81,17 @@ func intersects(as, bs []Set) bool {
 }
 
 func (s *Server) Add(ctx context.Context, t Tuple) error {
-	fmt.Println("add")
 	return s.tupleChange(ctx, "ADD_TUPLE", t)
 }
 
 func (s *Server) Remove(ctx context.Context, t Tuple) error {
-	fmt.Println("remove")
 	return s.tupleChange(ctx, "REMOVE_TUPLE", t)
 }
 
 func (s *Server) tupleChange(ctx context.Context, ev string, t Tuple) error {
 	change := Change{
 		Type: ev,
-		Payload: TupleChange{
-			Tuple: t,
-			// UpdateParents:  toUpdateParents,
-			// UpdateChildren: toUpdateChildren,
-		},
+		Payload: t,
 	}
 
 	if err := change.Create(ctx); err != nil {
@@ -106,34 +100,8 @@ func (s *Server) tupleChange(ctx context.Context, ev string, t Tuple) error {
 	return nil
 }
 
-func (s *Server) processAll(ctx context.Context) error {
-	for {
-		if err := s.processOne(ctx); err != nil {
-			rows, _ := pg.Query(ctx, `select type from changes`)
-			for rows.Next() {
-				var typ string
-				rows.Scan(&typ)
-				fmt.Println(typ)
-			}
-			if err == pgx.ErrNoRows {
-				// fmt.Println("end")
-				return nil
-			}
-
-			// slog.Debug("no tasks, sleeping")
-			//
-			// select {
-			// // case <-d.processing:
-			// case <-time.After(timeout):
-			// }
-			return fmt.Errorf("processing change failed: %w", err)
-		}
-	}
-	return nil
-}
-
 func (s *Server) processChange(ctx context.Context, c Change) error {
-	t := c.Payload.Tuple
+	t := c.Payload
 	var toUpdateChildren []Set
 	var toUpdateParents []Set
 
@@ -155,7 +123,7 @@ func (s *Server) processChange(ctx context.Context, c Change) error {
 	}
 
 	if c.Type == "ADD_TUPLE" {
-		if err := s.tuples.Add(ctx, c.Payload.Tuple); err != nil {
+		if err := s.tuples.Add(ctx, c.Payload); err != nil {
 			return fmt.Errorf("failed to add tuple: %w", err)
 		}
 		if err := refreshUpdates(ctx); err != nil {
@@ -165,7 +133,7 @@ func (s *Server) processChange(ctx context.Context, c Change) error {
 		if err := refreshUpdates(ctx); err != nil {
 			return fmt.Errorf("failed to get updates: %w", err)
 		}
-		if err := s.tuples.Remove(ctx, c.Payload.Tuple); err != nil {
+		if err := s.tuples.Remove(ctx, c.Payload); err != nil {
 			return fmt.Errorf("failed to remove tuple: %w", err)
 		}
 	}

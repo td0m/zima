@@ -14,11 +14,11 @@ type Set struct {
 
 func (s Set) CacheChildren(ctx context.Context, children []Set) error {
 	query := `
-		insert into caches(set_type, set_id, set_relation, children_rec, parents)
+		insert into caches(set_type, set_id, set_relation, children, parents)
 		values($1, $2, $3, $4, '[]')
 		on conflict (set_type, set_id, set_relation)
 		do update
-		set children_rec = $4
+		set children = $4
 	`
 
 	if _, err := pg.Exec(ctx, query, s.Type, s.ID, s.Relation, children); err != nil {
@@ -30,7 +30,7 @@ func (s Set) CacheChildren(ctx context.Context, children []Set) error {
 
 func (s Set) CacheParents(ctx context.Context, parents []Set) error {
 	query := `
-		insert into caches(set_type, set_id, set_relation, children_rec, parents)
+		insert into caches(set_type, set_id, set_relation, children, parents)
 		values($1, $2, $3, '[]', $4)
 		on conflict (set_type, set_id, set_relation)
 		do update
@@ -45,7 +45,7 @@ func (s Set) CacheParents(ctx context.Context, parents []Set) error {
 
 func (s Set) Children(ctx context.Context) ([]Set, error) {
 	query := `
-		select children_rec
+		select children
 		from caches
 		where (set_type, set_id, set_relation) = ($1, $2, $3)
 	`
