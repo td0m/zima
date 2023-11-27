@@ -7,9 +7,9 @@ import (
 )
 
 type Set struct {
-	Type     string
-	ID       string
-	Relation string
+	Type     string `json:"type"`
+	ID       string `json:"id"`
+	Relation string `json:"relation"`
 }
 
 func (s Set) CacheChildren(ctx context.Context, children []Set) error {
@@ -26,7 +26,6 @@ func (s Set) CacheChildren(ctx context.Context, children []Set) error {
 	}
 	return nil
 }
-
 
 func (s Set) CacheParents(ctx context.Context, parents []Set) error {
 	query := `
