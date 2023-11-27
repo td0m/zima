@@ -9,6 +9,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// func writeAndFlush(s *Server, ctx context.Context, add, remove []Tuple) error {
+// 	// err := s.Write(ctx, add, remove)
+// 	if err := s.processAll(ctx); err != nil {
+// 		panic(err)
+// 	}
+// 	// return err
+// 	return nil
+// }
+
+func add(s *Server, ctx context.Context, t Tuple) error {
+	err := s.Add(ctx, t)
+	if err := s.processAll(ctx); err != nil {
+		panic(err)
+	}
+	return err
+}
+
+func remove(s *Server, ctx context.Context, t Tuple) error {
+	err := s.Remove(ctx, t)
+	if err := s.processAll(ctx); err != nil {
+		panic(err)
+	}
+	return err
+}
+
 func TestDirect(t *testing.T) {
 	ctx := context.Background()
 
@@ -25,33 +50,18 @@ func TestDirect(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		s := NewServer(conn())
 
-		err := s.Write(ctx, []Tuple{a}, nil)
-		require.NoError(t, err)
+		require.NoError(t, add(s, ctx, a))
 
 		res, err := s.Check(ctx, a)
 		require.NoError(t, err)
 		assert.True(t, res)
 	})
 
-	t.Run("False on simultaneous add and remove", func(t *testing.T) {
-		s := NewServer(conn())
-
-		err := s.Write(ctx, []Tuple{a}, []Tuple{a})
-		require.NoError(t, err)
-
-		res, err := s.Check(ctx, a)
-		require.NoError(t, err)
-		assert.False(t, res)
-	})
-
 	t.Run("FalseAfterRemoval", func(t *testing.T) {
 		s := NewServer(conn())
 
-		err := s.Write(ctx, []Tuple{a}, nil)
-		require.NoError(t, err)
-
-		err = s.Write(ctx, nil, []Tuple{a})
-		require.NoError(t, err)
+		require.NoError(t, add(s, ctx, a))
+		require.NoError(t, remove(s, ctx, a))
 
 		res, err := s.Check(ctx, a)
 		require.NoError(t, err)
@@ -77,8 +87,7 @@ func TestGroup(t *testing.T) {
 	t.Run("FailsIfOnlyA", func(t *testing.T) {
 		s := NewServer(conn())
 
-		err := s.Write(ctx, []Tuple{a}, nil)
-		require.NoError(t, err)
+		require.NoError(t, add(s, ctx, a))
 
 		res, err := s.Check(ctx, c)
 		require.NoError(t, err)
@@ -88,8 +97,7 @@ func TestGroup(t *testing.T) {
 	t.Run("FailsIfOnlyB", func(t *testing.T) {
 		s := NewServer(conn())
 
-		err := s.Write(ctx, []Tuple{b}, nil)
-		require.NoError(t, err)
+		require.NoError(t, add(s, ctx, b))
 
 		res, err := s.Check(ctx, c)
 		require.NoError(t, err)
@@ -99,8 +107,8 @@ func TestGroup(t *testing.T) {
 	t.Run("SuccessIfBothTuples", func(t *testing.T) {
 		s := NewServer(conn())
 
-		err := s.Write(ctx, []Tuple{a, b}, nil)
-		require.NoError(t, err)
+		require.NoError(t, add(s, ctx, a))
+		require.NoError(t, add(s, ctx, b))
 
 		res, err := s.Check(ctx, c)
 		require.NoError(t, err)
@@ -115,8 +123,7 @@ func TestLabelling(t *testing.T) {
 
 	s := NewServer(conn())
 
-	err := s.Write(ctx, []Tuple{public}, nil)
-	require.NoError(t, err)
+	require.NoError(t, add(s, ctx, public))
 
 	res, err := s.Check(ctx, public)
 	require.NoError(t, err)
@@ -132,8 +139,10 @@ func TestListChildren(t *testing.T) {
 	c := Tuple{set("team", "nonadmins", "member"), set("user", "alice", "")}
 
 	s := NewServer(conn())
-	err := s.Write(ctx, []Tuple{a, b, c}, nil)
-	require.NoError(t, err)
+
+	require.NoError(t, add(s, ctx, a))
+	require.NoError(t, add(s, ctx, b))
+	require.NoError(t, add(s, ctx, c))
 
 	t.Run("Empty", func(t *testing.T) {
 		res, err := s.ListChildren(ctx, ListChildrenRequest{Type: "some", ID: "random"})
@@ -161,8 +170,10 @@ func TestListParents(t *testing.T) {
 	c := Tuple{set("team", "nonadmins", "member"), alice}
 
 	s := NewServer(conn())
-	err := s.Write(ctx, []Tuple{a, b, c}, nil)
-	require.NoError(t, err)
+
+	require.NoError(t, add(s, ctx, a))
+	require.NoError(t, add(s, ctx, b))
+	require.NoError(t, add(s, ctx, c))
 
 	t.Run("Empty", func(t *testing.T) {
 		res, err := s.ListParents(ctx, ListParentsRequest{Type: "some", ID: "random"})
@@ -199,8 +210,7 @@ func TestNestedGroup(t *testing.T) {
 	t.Run("FailsIfOnlyA", func(t *testing.T) {
 		s := NewServer(conn())
 
-		err := s.Write(ctx, []Tuple{a}, nil)
-		require.NoError(t, err)
+		require.NoError(t, add(s, ctx, a))
 
 		res, err := s.Check(ctx, c)
 		require.NoError(t, err)
@@ -210,8 +220,7 @@ func TestNestedGroup(t *testing.T) {
 	t.Run("FailsIfOnlyB", func(t *testing.T) {
 		s := NewServer(conn())
 
-		err := s.Write(ctx, []Tuple{b}, nil)
-		require.NoError(t, err)
+		require.NoError(t, add(s, ctx, b))
 
 		res, err := s.Check(ctx, c)
 		require.NoError(t, err)
@@ -221,8 +230,8 @@ func TestNestedGroup(t *testing.T) {
 	t.Run("SuccessIfBothTuples", func(t *testing.T) {
 		s := NewServer(conn())
 
-		err := s.Write(ctx, []Tuple{a, b}, nil)
-		require.NoError(t, err)
+		require.NoError(t, add(s, ctx, a))
+		require.NoError(t, add(s, ctx, b))
 
 		res, err := s.Check(ctx, c)
 		require.NoError(t, err)
@@ -232,11 +241,11 @@ func TestNestedGroup(t *testing.T) {
 	t.Run("FalseAfterRemoval", func(t *testing.T) {
 		s := NewServer(conn())
 
-		err := s.Write(ctx, []Tuple{a, b}, nil)
-		require.NoError(t, err)
+		require.NoError(t, add(s, ctx, a))
+		require.NoError(t, add(s, ctx, b))
 
-		err = s.Write(ctx, nil, []Tuple{a, b})
-		require.NoError(t, err)
+		require.NoError(t, remove(s, ctx, a))
+		require.NoError(t, remove(s, ctx, b))
 
 		res, err := s.Check(ctx, a)
 		require.NoError(t, err)
@@ -257,8 +266,10 @@ func TestDeeplyNestedGroup(t *testing.T) {
 	t.Run("True", func(t *testing.T) {
 		s := NewServer(conn())
 
-		err := s.Write(ctx, []Tuple{a,b,c,d}, nil)
-		require.NoError(t, err)
+		require.NoError(t, add(s, ctx, a))
+		require.NoError(t, add(s, ctx, b))
+		require.NoError(t, add(s, ctx, c))
+		require.NoError(t, add(s, ctx, d))
 
 		res, err := s.Check(ctx, expected)
 		require.NoError(t, err)
@@ -268,8 +279,9 @@ func TestDeeplyNestedGroup(t *testing.T) {
 	t.Run("FalseOnOnlyABC", func(t *testing.T) {
 		s := NewServer(conn())
 
-		err := s.Write(ctx, []Tuple{a,b,c}, nil)
-		require.NoError(t, err)
+		require.NoError(t, add(s, ctx, a))
+		require.NoError(t, add(s, ctx, b))
+		require.NoError(t, add(s, ctx, c))
 
 		res, err := s.Check(ctx, expected)
 		require.NoError(t, err)
@@ -279,11 +291,12 @@ func TestDeeplyNestedGroup(t *testing.T) {
 	t.Run("FalseAfterRemovingC", func(t *testing.T) {
 		s := NewServer(conn())
 
-		err := s.Write(ctx, []Tuple{a,b,c,d}, nil)
-		require.NoError(t, err)
+		require.NoError(t, add(s, ctx, a))
+		require.NoError(t, add(s, ctx, b))
+		require.NoError(t, add(s, ctx, c))
+		require.NoError(t, add(s, ctx, d))
 
-		err = s.Write(ctx, nil, []Tuple{c})
-		require.NoError(t, err)
+		require.NoError(t, remove(s, ctx, c))
 
 		res, err := s.Check(ctx, expected)
 		require.NoError(t, err)
@@ -293,13 +306,15 @@ func TestDeeplyNestedGroup(t *testing.T) {
 	t.Run("FalseAfterRemovingD", func(t *testing.T) {
 		s := NewServer(conn())
 
-		err := s.Write(ctx, []Tuple{a,b,c,d}, nil)
-		require.NoError(t, err)
+		require.NoError(t, add(s, ctx, a))
+		require.NoError(t, add(s, ctx, b))
+		require.NoError(t, add(s, ctx, c))
+		require.NoError(t, add(s, ctx, d))
 
-		err = s.Write(ctx, nil, []Tuple{d})
-		require.NoError(t, err)
+		require.NoError(t, remove(s, ctx, d))
 
 		res, err := s.Check(ctx, expected)
+
 		require.NoError(t, err)
 		assert.False(t, res)
 	})
@@ -307,11 +322,12 @@ func TestDeeplyNestedGroup(t *testing.T) {
 	t.Run("FalseAfterRemovingB", func(t *testing.T) {
 		s := NewServer(conn())
 
-		err := s.Write(ctx, []Tuple{a,b,c,d}, nil)
-		require.NoError(t, err)
+		require.NoError(t, add(s, ctx, a))
+		require.NoError(t, add(s, ctx, b))
+		require.NoError(t, add(s, ctx, c))
+		require.NoError(t, add(s, ctx, d))
 
-		err = s.Write(ctx, nil, []Tuple{b})
-		require.NoError(t, err)
+		require.NoError(t, remove(s, ctx, b))
 
 		res, err := s.Check(ctx, expected)
 		require.NoError(t, err)
@@ -335,8 +351,7 @@ func TestSystemUsers(t *testing.T) {
 		t.Run("Success", func(t *testing.T) {
 			tuple := Tuple{set("system", "users", "*"), set("user", "alice", "")}
 
-			err := s.Write(ctx, []Tuple{tuple}, nil)
-			require.NoError(t, err)
+			require.NoError(t, add(s, ctx, tuple))
 
 			res, err := s.Check(ctx, tuple)
 			require.NoError(t, err)
@@ -346,8 +361,7 @@ func TestSystemUsers(t *testing.T) {
 		t.Run("FailureOnNotUser", func(t *testing.T) {
 			tuple := Tuple{set("system", "users", "*"), set("f", "", "")}
 
-			err := s.Write(ctx, []Tuple{tuple}, nil)
-			require.NoError(t, err)
+			require.NoError(t, add(s, ctx, tuple))
 
 			res, err := s.Check(ctx, tuple)
 			require.NoError(t, err)
@@ -361,8 +375,7 @@ func TestSystemUsers(t *testing.T) {
 		t.Run("Success", func(t *testing.T) {
 			tuple := Tuple{set("system", "users", "authenticated"), set("user", "alice", "")}
 
-			err := s.Write(ctx, []Tuple{tuple}, nil)
-			require.NoError(t, err)
+			require.NoError(t, add(s, ctx, tuple))
 
 			res, err := s.Check(ctx, tuple)
 			require.NoError(t, err)
@@ -373,8 +386,7 @@ func TestSystemUsers(t *testing.T) {
 			tuple := Tuple{set("system", "users", "authenticated"), set("user", "", "")}
 			tuple.Child.ID = ""
 
-			err := s.Write(ctx, []Tuple{tuple}, nil)
-			require.NoError(t, err)
+			require.NoError(t, add(s, ctx, tuple))
 
 			res, err := s.Check(ctx, tuple)
 			require.NoError(t, err)
@@ -384,8 +396,7 @@ func TestSystemUsers(t *testing.T) {
 		t.Run("FailureOnNotUser", func(t *testing.T) {
 			tuple := Tuple{set("system", "users", "authenticated"), set("foo", "", "")}
 
-			err := s.Write(ctx, []Tuple{tuple}, nil)
-			require.NoError(t, err)
+			require.NoError(t, add(s, ctx, tuple))
 
 			res, err := s.Check(ctx, tuple)
 			require.NoError(t, err)

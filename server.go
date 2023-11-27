@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/exp/slog"
 )
 
 var (
@@ -77,108 +80,186 @@ func intersects(as, bs []Set) bool {
 	return false
 }
 
-func (s *Server) Write(ctx context.Context, add []Tuple, remove []Tuple) error {
-	// TODO: ensure one write at a time.
+func (s *Server) Add(ctx context.Context, t Tuple) error {
+	fmt.Println("add")
+	return s.tupleChange(ctx, "ADD_TUPLE", t)
+}
 
-	tx, err := s.conn.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to begin tx: %w", err)
+func (s *Server) Remove(ctx context.Context, t Tuple) error {
+	fmt.Println("remove")
+	return s.tupleChange(ctx, "REMOVE_TUPLE", t)
+}
+
+func (s *Server) tupleChange(ctx context.Context, ev string, t Tuple) error {
+	change := Change{
+		Type: ev,
+		Payload: TupleChange{
+			Tuple: t,
+			// UpdateParents:  toUpdateParents,
+			// UpdateChildren: toUpdateChildren,
+		},
 	}
 
-	var toUpdateParents []Set
+	if err := change.Create(ctx); err != nil {
+		return fmt.Errorf("change creation failed: %w", err)
+	}
+	return nil
+}
+
+func (s *Server) processAll(ctx context.Context) error {
+	for {
+		if err := s.processOne(ctx); err != nil {
+			rows, _ := pg.Query(ctx, `select type from changes`)
+			for rows.Next() {
+				var typ string
+				rows.Scan(&typ)
+				fmt.Println(typ)
+			}
+			if err == pgx.ErrNoRows {
+				// fmt.Println("end")
+				return nil
+			}
+
+			// slog.Debug("no tasks, sleeping")
+			//
+			// select {
+			// // case <-d.processing:
+			// case <-time.After(timeout):
+			// }
+			return fmt.Errorf("processing change failed: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *Server) processChange(ctx context.Context, c Change) error {
+	t := c.Payload.Tuple
 	var toUpdateChildren []Set
+	var toUpdateParents []Set
 
-	if len(remove) > 0 {
-		// copy pasted
-		for _, t := range remove {
-			parents, err := s.tuples.ListParentsRec(ctx, t.Child)
-			if err != nil {
-				return fmt.Errorf("failed to list parents rec: %w", err)
-			}
-
-			toUpdateChildren = append(toUpdateChildren, t.Parent)
-			toUpdateParents = append(toUpdateParents, t.Child)
-
-			toUpdateChildren = append(toUpdateChildren, parents...)
-
-			children, err := s.tuples.ListChildrenRec(ctx, t.Child)
-			if err != nil {
-				return fmt.Errorf("failed to list children: %w", err)
-			}
-			toUpdateParents = append(toUpdateParents, children...)
+	refreshUpdates := func(ctx context.Context) error {
+		parents, err := s.tuples.ListParentsRec(ctx, t.Child)
+		if err != nil {
+			return fmt.Errorf("failed to list parents rec: %w", err)
 		}
+
+		children, err := s.tuples.ListChildrenRec(ctx, t.Child)
+		if err != nil {
+			return fmt.Errorf("failed to list children: %w", err)
+		}
+
+		toUpdateParents = append([]Set{t.Child}, children...)
+		toUpdateChildren = append([]Set{t.Parent}, parents...)
+
+		return nil
 	}
 
-	for _, t := range add {
-		if t.Parent.Relation == "" {
-			return fmt.Errorf("no relation")
+	if c.Type == "ADD_TUPLE" {
+		if err := s.tuples.Add(ctx, c.Payload.Tuple); err != nil {
+			return fmt.Errorf("failed to add tuple: %w", err)
 		}
-		if err := s.tuples.WithTx(tx).Add(ctx, t); err != nil {
-			if err := tx.Rollback(ctx); err != nil {
-				return fmt.Errorf("failed to rollback '%s': %w", t, err)
-			}
-			return fmt.Errorf("failed to add tuple '%s': %w", t, err)
+		if err := refreshUpdates(ctx); err != nil {
+			return fmt.Errorf("failed to get updates: %w", err)
 		}
-	}
-
-	if len(add) > 0 {
-		// copy pasted
-		for _, t := range add {
-			parents, err := s.tuples.ListParentsRec(ctx, t.Child)
-			if err != nil {
-				return fmt.Errorf("failed to list parents rec: %w", err)
-			}
-
-			toUpdateChildren = append(toUpdateChildren, t.Parent)
-			toUpdateParents = append(toUpdateParents, t.Child)
-
-			toUpdateChildren = append(toUpdateChildren, parents...)
-
-			children, err := s.tuples.ListChildrenRec(ctx, t.Child)
-			if err != nil {
-				return fmt.Errorf("failed to list children: %w", err)
-			}
-			toUpdateParents = append(toUpdateParents, children...)
+	} else {
+		if err := refreshUpdates(ctx); err != nil {
+			return fmt.Errorf("failed to get updates: %w", err)
 		}
-	}
-
-	for _, t := range remove {
-		if err := s.tuples.WithTx(tx).Remove(ctx, t); err != nil {
-			if err := tx.Rollback(ctx); err != nil {
-				return fmt.Errorf("failed to rollback '%s': %w", t, err)
-			}
-			return fmt.Errorf("failed to remove tuple '%s': %w", t, err)
+		if err := s.tuples.Remove(ctx, c.Payload.Tuple); err != nil {
+			return fmt.Errorf("failed to remove tuple: %w", err)
 		}
 	}
 
 	for _, set := range toUpdateChildren {
-		children, err := s.tuples.WithTx(tx).ListConnectingTo(ctx, set)
+		children, err := s.tuples.ListConnectingTo(ctx, set)
 		if err != nil {
-			_ = tx.Rollback(ctx)
 			return fmt.Errorf("ListChildrenRec failed: %w", err)
 		}
 
-		if err := set.CacheChildren(ctx, tx, children); err != nil {
-			_ = tx.Rollback(ctx)
+		if err := set.CacheChildren(ctx, children); err != nil {
 			return err
 		}
 	}
 
 	for _, set := range toUpdateParents {
-		parents, err := s.tuples.WithTx(tx).ListParentsRec(ctx, set)
+		parents, err := s.tuples.ListParentsRec(ctx, set)
 		if err != nil {
 			return fmt.Errorf("ListConnectingTo failed: %w", err)
 		}
-		if err := set.CacheParents(ctx, tx, parents); err != nil {
-			_ = tx.Rollback(ctx)
+		if err := set.CacheParents(ctx, parents); err != nil {
 			return fmt.Errorf("cacheParents failed: %w", err)
 		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit tx: %w", err)
+	return nil
+}
+
+func (s *Server) processOne(ctx context.Context) error {
+	timeout := time.Second * 5
+	stalePeriod := time.Hour
+
+	// This timeout should be higher than the "timeout", otherwise the tx.Commit will fail
+	ctx, cancel := context.WithTimeout(ctx, timeout+time.Second*2)
+	defer cancel()
+
+	tx, err := pg.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin a tx: %w", err)
 	}
 
+	var c Change
+	err = tx.QueryRow(ctx, `
+		update changes
+		set processed=true
+		where id in
+		(
+		  select id
+		  from changes
+			where not processed
+		  order by created_at
+		  for update skip locked
+		  limit 1
+		)
+		returning id, type, payload, created_at
+	`).Scan(&c.ID, &c.Type, &c.Payload, &c.CreatedAt)
+
+	// No rows = no tasks
+	if err == pgx.ErrNoRows {
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("tx failed to commit: %w", err)
+		}
+		return pgx.ErrNoRows
+	}
+
+	// Failed to execute query, probably a bad query/schema
+	if err != nil {
+		if err := tx.Rollback(ctx); err != nil {
+			return fmt.Errorf("failed to rollback: %w", err)
+		}
+		return fmt.Errorf("failed to query/scan: %w", err)
+	}
+
+	// Process task
+	if err := s.processChange(ctx, c); err != nil {
+		if err := tx.Rollback(ctx); err != nil {
+			return fmt.Errorf("failed to rollback: %w", err)
+		}
+
+		time.Sleep(timeout)
+
+		// Tasks older than stalePeriod get logged
+		if time.Since(c.CreatedAt) > stalePeriod {
+			// TODO: probably log this somewhere else
+			slog.Info("stale change", "change", c)
+		}
+
+		return fmt.Errorf("failed to process change %s: %w", c.Type, err)
+	}
+
+	// No errors, so task can be deleted
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("tx failed to commit: %w", err)
+	}
 	return nil
 }
 

@@ -12,7 +12,7 @@ type Set struct {
 	Relation string
 }
 
-func (s Set) CacheChildren(ctx context.Context, tx pgx.Tx, children []Set) error {
+func (s Set) CacheChildren(ctx context.Context, children []Set) error {
 	query := `
 		insert into caches(set_type, set_id, set_relation, children_rec, parents)
 		values($1, $2, $3, $4, '[]')
@@ -28,7 +28,7 @@ func (s Set) CacheChildren(ctx context.Context, tx pgx.Tx, children []Set) error
 }
 
 
-func (s Set) CacheParents(ctx context.Context, tx pgx.Tx, parents []Set) error {
+func (s Set) CacheParents(ctx context.Context, parents []Set) error {
 	query := `
 		insert into caches(set_type, set_id, set_relation, children_rec, parents)
 		values($1, $2, $3, '[]', $4)

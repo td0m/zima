@@ -2,13 +2,22 @@ package zima
 
 import (
 	"context"
+	"time"
 
 	"github.com/rs/xid"
 )
 
 type Change struct {
-	Type    string
-	Payload Tuple
+	ID        string
+	Type      string
+	Payload   TupleChange
+	CreatedAt time.Time
+}
+
+type TupleChange struct {
+	Tuple          Tuple
+	UpdateChildren []Set
+	UpdateParents  []Set
 }
 
 func (c Change) Create(ctx context.Context) error {
