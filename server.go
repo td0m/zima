@@ -59,10 +59,7 @@ func (srv *Server) Check(ctx context.Context, t Tuple) (bool, error) {
 		return false, fmt.Errorf("getting child cache failed: %w", err)
 	}
 
-	fmt.Println("check", t)
-
-	childrenWithSelf := append(children, t.Parent)
-	if intersects(childrenWithSelf, parents) {
+	if intersects(append(children, t.Parent), parents) {
 		return true, nil
 	}
 
@@ -70,8 +67,6 @@ func (srv *Server) Check(ctx context.Context, t Tuple) (bool, error) {
 }
 
 func intersects(as, bs []Set) bool {
-	fmt.Println("intersects(children, parents)?", as, bs)
-
 	for _, a := range as {
 		for _, b := range bs {
 			if a.Equals(b) {
@@ -197,7 +192,7 @@ func (s *Server) ListChildren(ctx context.Context, request ListChildrenRequest) 
 }
 
 func (s *Server) ListParents(ctx context.Context, request ListParentsRequest) (*Sets, error) {
-	parents, err := s.tuples.ListConnectingTo(ctx, Set{request.Type, request.ID, request.Relation})
+	parents, err := s.tuples.ListConnectingTo(ctx, Set{Type: request.Type, ID: request.ID, Relation: request.Relation})
 	if err != nil {
 		return nil, fmt.Errorf("db failed: %w", err)
 	}
