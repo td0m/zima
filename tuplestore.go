@@ -70,6 +70,7 @@ func (t *TupleStore) ListConnectingFrom(ctx context.Context, typ, id string) ([]
 		from tuples
 		where
 			(parent_type, parent_id) = ($1, $2)
+		order by child_type, child_id, child_relation
 	`
 
 	rows, err := t.conn.Query(ctx, query, typ, id)
@@ -95,6 +96,7 @@ func (t *TupleStore) ListConnectingTo(ctx context.Context, s Set) ([]Set, error)
 		from tuples
 		where
 			(child_type, child_id, child_relation) = ($1, $2, $3)
+		order by parent_type, parent_id, parent_relation
 	`
 
 	rows, err := t.conn.Query(ctx, query, s.Type, s.ID, s.Relation)
