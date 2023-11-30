@@ -10,9 +10,22 @@ import (
 	"github.com/td0m/zima"
 )
 
-var totalInserts int = 0
+var totalInserts = 0
+var depths = []int{100, 3, 2}
+var clean = true
+
+func init() {
+	count := 1
+	for _, i := range depths {
+		count *= i
+	}
+	fmt.Println(count)
+}
 
 func cleanup(ctx context.Context, conn *pgxpool.Pool) {
+	if !clean {
+		return
+	}
 	query := `
 		delete from tuples;
 		delete from caches;
@@ -34,10 +47,30 @@ func conn() *pgxpool.Pool {
 }
 
 func main() {
-	s := zima.NewServer(conn())
+	c := conn()
+	s := zima.NewServer(c)
+
+	go func() {
+		for {
+			if err := s.ProcessOne(context.Background()); err != nil {
+				fmt.Printf("failed to process change: %s\n", err)
+				break
+			}
+		}
+	}()
 
 	start := time.Now()
-	setupTesting(s, "root", []int{10, 6, 4, 3, 4})
+	setupTesting(s, randString(100), depths)
+
+	for {
+		count := 0
+		ctx := context.Background()
+		c.QueryRow(ctx, `select count(*) from changes where not processed`).Scan(&count)
+		if count == 0 {
+			break
+		}
+		time.Sleep(time.Millisecond * 10)
+	}
 	fmt.Println(time.Since(start)/time.Duration(totalInserts), totalInserts)
 }
 
@@ -47,15 +80,18 @@ func setupTesting(s *zima.Server, a string, ns []int) {
 	}
 	ctx := context.Background()
 
+
 	for i := 0; i < ns[0]; i++ {
-		b := randString(10)
+		b := randString(1000)
 
 		totalInserts++
 
-		check(s.Add(ctx, zima.Tuple{
+		t := zima.Tuple{
 			Parent: set("collection", a, "member"),
 			Child:  set("collection", b, "member"),
-		}))
+		}
+
+		check(s.Add(ctx, t))
 
 		setupTesting(s, b, ns[1:])
 	}
