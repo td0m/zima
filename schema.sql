@@ -8,25 +8,14 @@ create table changes(
 
 create index changes_processed_idx on changes(processed);
 
-create table tuples(
-  parent_type  text not null,
-  parent_id    text not null,
-  parent_relation text not null,
-
-  child_type  text not null,
-  child_id    text not null,
-  child_relation text not null,
-
-  primary key(parent_type, parent_id, parent_relation, child_type, child_id, child_relation)
-);
-
 create table caches(
   set_type text not null,
   set_id text not null,
   set_relation text not null,
 
-  parents jsonb not null,
-  children jsonb not null,
+  parents jsonb not null default '[]',
+  children jsonb not null default '[]',
+  subsets jsonb not null default '[]',
 
   primary key (set_type, set_id, set_relation)
 );

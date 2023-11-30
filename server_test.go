@@ -155,11 +155,11 @@ func TestListChildren(t *testing.T) {
 	})
 
 	t.Run("Admins", func(t *testing.T) {
-		res, err := s.ListChildren(ctx, ListChildrenRequest{Type: admins.Type, ID: admins.ID})
+		res, err := s.ListChildren(ctx, ListChildrenRequest{Type: admins.Type, ID: admins.ID, Relation: "member"})
 		require.NoError(t, err)
 		assert.Equal(t, 2, len(res.Items))
-		assert.Equal(t, Connection{Relation: "member", Set: a.Child}, res.Items[0])
-		assert.Equal(t, Connection{Relation: "member", Set: b.Child}, res.Items[1])
+		assert.Equal(t, a.Child, res.Items[0])
+		assert.Equal(t, b.Child, res.Items[1])
 	})
 }
 

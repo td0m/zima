@@ -17,12 +17,12 @@ var (
 
 type Server struct {
 	conn   *pgxpool.Pool
-	tuples *TupleStore
 }
 
 type ListChildrenRequest struct {
-	Type string
-	ID   string
+	Type     string
+	ID       string
+	Relation string
 }
 
 type ListParentsRequest struct {
@@ -52,7 +52,7 @@ func (srv *Server) Check(ctx context.Context, t Tuple) (bool, error) {
 		}
 	}
 
-	children, err := t.Parent.Children(ctx)
+	children, err := t.Parent.Subsets(ctx)
 	if err != nil {
 		return false, fmt.Errorf("getting parent cache failed: %w", err)
 	}
@@ -90,7 +90,7 @@ func (s *Server) Remove(ctx context.Context, t Tuple) error {
 
 func (s *Server) tupleChange(ctx context.Context, ev string, t Tuple) error {
 	change := Change{
-		Type: ev,
+		Type:    ev,
 		Payload: t,
 	}
 
@@ -101,61 +101,59 @@ func (s *Server) tupleChange(ctx context.Context, ev string, t Tuple) error {
 }
 
 func (s *Server) processChange(ctx context.Context, c Change) error {
-	t := c.Payload
-	var toUpdateChildren []Set
-	var toUpdateParents []Set
-
-	refreshUpdates := func(ctx context.Context) error {
-		parents, err := s.tuples.ListParentsRec(ctx, t.Child)
-		if err != nil {
-			return fmt.Errorf("failed to list parents rec: %w", err)
-		}
-
-		children, err := s.tuples.ListChildrenRec(ctx, t.Child)
-		if err != nil {
-			return fmt.Errorf("failed to list children: %w", err)
-		}
-
-		toUpdateParents = append([]Set{t.Child}, children...)
-		toUpdateChildren = append([]Set{t.Parent}, parents...)
-
-		return nil
-	}
-
+	// TODO: add mutex
 	if c.Type == "ADD_TUPLE" {
-		if err := s.tuples.Add(ctx, c.Payload); err != nil {
-			return fmt.Errorf("failed to add tuple: %w", err)
-		}
-		if err := refreshUpdates(ctx); err != nil {
-			return fmt.Errorf("failed to get updates: %w", err)
-		}
+		return s.processAddTuple(ctx, c.Payload)
 	} else {
-		if err := refreshUpdates(ctx); err != nil {
-			return fmt.Errorf("failed to get updates: %w", err)
-		}
-		if err := s.tuples.Remove(ctx, c.Payload); err != nil {
-			return fmt.Errorf("failed to remove tuple: %w", err)
-		}
+		return s.processRemoveTuple(ctx, c.Payload)
+	}
+}
+
+func (s *Server) processAddTuple(ctx context.Context, t Tuple) error {
+	a, b := t.Parent, t.Child
+	if err := a.AddDirectChild(ctx, b); err != nil {
+		return err
+	}
+	if err := b.AddDirectParent(ctx, a); err != nil {
+		return err
 	}
 
-	for _, set := range toUpdateChildren {
-		children, err := s.tuples.ListConnectingTo(ctx, set)
-		if err != nil {
-			return fmt.Errorf("ListChildrenRec failed: %w", err)
-		}
+	if err := a.CacheSubsets(ctx); err != nil {
+		return err
+	}
 
-		if err := set.CacheChildren(ctx, children); err != nil {
+	supersetsOfA, err := a.ComputeSupersets(ctx)
+	if err != nil {
+		return err
+	}
+	for _, parent := range supersetsOfA {
+		if err := parent.CacheSubsets(ctx); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
-	for _, set := range toUpdateParents {
-		parents, err := s.tuples.ListParentsRec(ctx, set)
-		if err != nil {
-			return fmt.Errorf("ListConnectingTo failed: %w", err)
-		}
-		if err := set.CacheParents(ctx, parents); err != nil {
-			return fmt.Errorf("cacheParents failed: %w", err)
+func (s *Server) processRemoveTuple(ctx context.Context, t Tuple) error {
+	a, b := t.Parent, t.Child
+	if err := a.RemoveChild(ctx, b); err != nil {
+		return err
+	}
+	if err := b.RemoveParent(ctx, a); err != nil {
+		return err
+	}
+
+	if err := a.CacheSubsets(ctx); err != nil {
+		return err
+	}
+
+	supersetsOfA, err := a.ComputeSupersets(ctx)
+	if err != nil {
+		return err
+	}
+	for _, parent := range supersetsOfA {
+		if err := parent.CacheSubsets(ctx); err != nil {
+			return err
 		}
 	}
 
@@ -231,25 +229,23 @@ func (s *Server) processOne(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) ListChildren(ctx context.Context, request ListChildrenRequest) (*Connections, error) {
-	children, err := s.tuples.ListConnectingFrom(ctx, request.Type, request.ID)
+func (s *Server) ListChildren(ctx context.Context, request ListChildrenRequest) (*Sets, error) {
+	children, err := Set{Type: request.Type, ID: request.ID, Relation: request.Relation}.Children(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("db failed: %w", err)
 	}
-
-	return &Connections{Items: children}, nil
+	return &Sets{Items: children}, nil
 }
 
 func (s *Server) ListParents(ctx context.Context, request ListParentsRequest) (*Sets, error) {
-	parents, err := s.tuples.ListConnectingTo(ctx, Set{Type: request.Type, ID: request.ID, Relation: request.Relation})
+	parents, err := Set{Type: request.Type, ID: request.ID, Relation: request.Relation}.Parents(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("db failed: %w", err)
 	}
-
 	return &Sets{Items: parents}, nil
 }
 
 func NewServer(conn *pgxpool.Pool) *Server {
 	pg = conn
-	return &Server{conn, NewTupleStore(conn)}
+	return &Server{conn}
 }

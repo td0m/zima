@@ -1,6 +1,6 @@
 package zima
 
 type Connection struct {
-	Set Set
+	Set      Set
 	Relation string
 }
