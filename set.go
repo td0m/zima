@@ -2,7 +2,6 @@ package zima
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -77,17 +76,28 @@ func (s Set) ComputeSubsets(ctx context.Context) ([]Set, error) {
 		return nil, err
 	}
 
-	all := make([]Set, len(direct))
-	copy(all, direct)
+	all := []Set{}
 	for _, child := range direct {
 		subsets, err := child.ComputeSubsets(ctx)
 		if err != nil {
 			return nil, err
 		}
-		all = append(all, subsets...)
+		all = append(all, child)
+		if len(subsets) > 0 {
+			all = append(all, subsets...)
+		}
 	}
 
 	return all, nil
+}
+
+func (s Set) AddSubsets(ctx context.Context, added []Set) error {
+	existing, err := s.Subsets(ctx)
+	if err != nil {
+		return err
+	}
+
+	return s.SetSubsets(ctx, append(existing, added...))
 }
 
 func (s Set) CacheSubsets(ctx context.Context) error {
@@ -96,7 +106,6 @@ func (s Set) CacheSubsets(ctx context.Context) error {
 		return err
 	}
 
-	fmt.Println("updateRemove", s, subsets)
 	return s.SetSubsets(ctx, subsets)
 }
 

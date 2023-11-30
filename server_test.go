@@ -13,7 +13,7 @@ import (
 
 func processAll(s *Server, ctx context.Context) error {
 	for {
-		if err := s.processOne(ctx); err != nil {
+		if err := s.ProcessOne(ctx); err != nil {
 			if err == pgx.ErrNoRows {
 				return nil
 			}

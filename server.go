@@ -16,7 +16,8 @@ var (
 )
 
 type Server struct {
-	conn   *pgxpool.Pool
+	conn       *pgxpool.Pool
+	processing chan bool
 }
 
 type ListChildrenRequest struct {
@@ -97,6 +98,9 @@ func (s *Server) tupleChange(ctx context.Context, ev string, t Tuple) error {
 	if err := change.Create(ctx); err != nil {
 		return fmt.Errorf("change creation failed: %w", err)
 	}
+
+	s.processChangesImmediately()
+
 	return nil
 }
 
@@ -109,7 +113,14 @@ func (s *Server) processChange(ctx context.Context, c Change) error {
 	}
 }
 
+func (s *Server) processChangesImmediately() {
+	go func() {
+		s.processing <- true
+	}()
+}
+
 func (s *Server) processAddTuple(ctx context.Context, t Tuple) error {
+	start := time.Now()
 	a, b := t.Parent, t.Child
 	if err := a.AddDirectChild(ctx, b); err != nil {
 		return err
@@ -118,7 +129,14 @@ func (s *Server) processAddTuple(ctx context.Context, t Tuple) error {
 		return err
 	}
 
-	if err := a.CacheSubsets(ctx); err != nil {
+	bSubsets, err := b.ComputeSubsets(ctx)
+	if err != nil {
+		return err
+	}
+
+	bSubsets = append(bSubsets, b)
+
+	if err := a.AddSubsets(ctx, bSubsets); err != nil {
 		return err
 	}
 
@@ -127,10 +145,11 @@ func (s *Server) processAddTuple(ctx context.Context, t Tuple) error {
 		return err
 	}
 	for _, parent := range supersetsOfA {
-		if err := parent.CacheSubsets(ctx); err != nil {
+		if err := parent.AddSubsets(ctx, bSubsets); err != nil {
 			return err
 		}
 	}
+	fmt.Println(time.Since(start).Milliseconds())
 	return nil
 }
 
@@ -160,7 +179,7 @@ func (s *Server) processRemoveTuple(ctx context.Context, t Tuple) error {
 	return nil
 }
 
-func (s *Server) processOne(ctx context.Context) error {
+func (s *Server) ProcessOne(ctx context.Context) error {
 	timeout := time.Second * 5
 	stalePeriod := time.Hour
 
@@ -191,6 +210,13 @@ func (s *Server) processOne(ctx context.Context) error {
 
 	// No rows = no tasks
 	if err == pgx.ErrNoRows {
+		slog.Debug("no tasks, sleeping")
+
+		select {
+		case <-s.processing:
+		case <-time.After(timeout):
+		}
+
 		if err := tx.Commit(ctx); err != nil {
 			return fmt.Errorf("tx failed to commit: %w", err)
 		}
@@ -247,5 +273,5 @@ func (s *Server) ListParents(ctx context.Context, request ListParentsRequest) (*
 
 func NewServer(conn *pgxpool.Pool) *Server {
 	pg = conn
-	return &Server{conn}
+	return &Server{conn, make(chan bool, 1)}
 }
