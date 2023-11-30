@@ -129,7 +129,7 @@ func (s *Server) processAddTuple(ctx context.Context, t Tuple) error {
 		return err
 	}
 
-	bSubsets, err := b.ComputeSubsets(ctx)
+	bSubsets, err := b.Subsets(ctx)
 	if err != nil {
 		return err
 	}
