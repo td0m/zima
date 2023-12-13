@@ -4,7 +4,9 @@ go 1.21.3
 
 require (
 	github.com/jackc/pgx/v5 v5.5.0
+	github.com/rs/xid v1.5.0
 	github.com/stretchr/testify v1.8.1
+	golang.org/x/exp v0.0.0-20231127185646-65229373498e
 )
 
 require (

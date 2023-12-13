@@ -1,8 +1,8 @@
 package zima
 
 type Tuple struct {
-	Parent Set
-	Child  Set
+	Parent Set `json:"parent"`
+	Child  Set `json:"child"`
 }
 
 func NewTuple(parent Set, child Set) Tuple {
