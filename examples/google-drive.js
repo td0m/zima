@@ -10,65 +10,46 @@ function is(l) {
 	return `is:${l}`
 }
 
-function u(userId) {
-	return `user:${userId}`
-}
-
-function resource(type, id) {
-	const s = `${type}:${id}`
+function set(namespace, id) {
+	const s = `${namespace}:${id}`
 	return s
 }
 
-function checkAnyRelation(res, relations, label) {
-	for (let r of relations) {
-		const ok = z.check(res.relation(r), label) 
+function checkAny(namespaces, id, label) {
+	for (let n of namespaces) {
+		const ok = z.check(set(n, id), label) 
 		if (ok) return true
 	}
-}
-
-String.prototype.relation = function(relation) {
-	return this + "#" + relation
+  return false
 }
 
 // implementation
 
-function onCreateFile(folderId, fileId, ownerId) {
-	const file = resource("file", fileId)
-	const folder = resource("folder", folderId)
 
+function onCreateFile(folderId, fileId, ownerId) {
 	const relations = ["owner", "viewer", "commenter", "editor"]
 	for (let relation of relations) {
-		z.addSubset(
-			file.relation(relation),
-			folder.relation(relation),
-		)
+		z.addSubset(set(`file_${relation}s`, fileId), set(`folder_${relation}s`, folderId))
 	}
-
-	z.label(file.relation("owner"), u(ownerId))
+	z.label(set("file_owners", fileId), ownerId)
 }
 
 function shareFolderWithDomain(folderId, domainId) {
-	z.addSubset(
-		resource("folder", folderId).relation("owner"),
-		resource("domain", domainId).relation("member"),
-	)
+	z.addSubset(set("folder_owners", folderId), set("domain_members", domainId))
 }
 
 function addUserToDomain(domainId, userId) {
-	z.label(
-		resource("domain", domainId).relation("member"),
-		u(userId),
-	)
+	z.label(set("domain_members", domainId), userId)
 }
 
 function canViewFile(fileId, userId) {
-	const isPublic = z.check(resource("file", fileId), is("public"))
+	const isPublic = z.check(set("file_labels", fileId), "public")
 	if (isPublic) return true
 
-	return checkAnyRelation(
-		resource("file", fileId),
-		["owner", "commenter", "editor", "viewer"],
-		u(userId),
+	return checkAny(
+    ["file_owners", "file_comenters", "file_editors", "file_viewers"],
+		fileId,
+		userId,
 	)
 }
 
@@ -82,5 +63,6 @@ addUserToDomain("superadmins", "bob")
 shareFolderWithDomain("important-folder", "superadmins")
 console.log(canViewFile("salaries.pdf", "bob"))
 
-z.label(resource("file", "salaries.pdf"), is("public"))
+z.label(set("file_labels", "salaries.pdf"), "public")
 console.log(canViewFile("salaries.pdf", "-"))
+
